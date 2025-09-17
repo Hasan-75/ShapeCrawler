@@ -15,9 +15,9 @@ namespace ShapeCrawler;
 public interface ISeries
 {
     /// <summary>
-    ///     Gets series name.
+    ///     Gets or sets series name.
     /// </summary>
-    string Name { get; }
+    string Name { get; set; }
 
     /// <summary>
     ///     Gets chart type.
@@ -54,7 +54,11 @@ internal sealed class Series : ISeries
 
     public bool HasName => this.cSer.GetFirstChild<C.SeriesText>()?.StringReference != null;
 
-    public string Name => this.ParseName();
+    public string Name
+    {
+        get => this.ParseName();
+        set => this.SetName(value);
+    }
 
     private string ParseName()
     {
@@ -62,5 +66,51 @@ internal sealed class Series : ISeries
         var fromCache = cStrRef.StringCache?.GetFirstChild<C.StringPoint>() !.Single().InnerText;
 
         return fromCache ?? new Workbook(this.chartPart.EmbeddedPackagePart!).FormulaValues(cStrRef.Formula!.Text)[0].ToString();
+    }
+
+    public void SetName(string name)
+    {
+        var cSeriesText = this.cSer.GetFirstChild<C.SeriesText>();
+        if (cSeriesText is null)
+        {
+            cSeriesText = new C.SeriesText();
+            var anchor = this.cSer.GetFirstChild<C.Order>() is OpenXmlElement element
+                ? element
+                : this.cSer.GetFirstChild<C.Index>();
+
+            if (anchor != null)
+            {
+                this.cSer.InsertAfter(cSeriesText, anchor);
+            }
+            else
+            {
+                this.cSer.PrependChild(cSeriesText);
+            }
+        }
+
+        var stringReference = cSeriesText.StringReference ?? cSeriesText.AppendChild(new C.StringReference());
+
+        stringReference.Formula?.Remove();
+
+        var stringCache = stringReference.StringCache ?? stringReference.AppendChild(new C.StringCache());
+
+        stringCache.PointCount ??=
+            new C.PointCount
+            {
+                Val = new UInt32Value(1U)
+            };
+
+        var stringPoint = stringCache.GetFirstChild<C.StringPoint>()
+            ?? stringCache.AppendChild(new C.StringPoint { Index = new UInt32Value(0U) });
+
+        var numericValue = stringPoint.GetFirstChild<C.NumericValue>();
+        if (numericValue != null)
+        {
+            numericValue.Text = name;
+        }
+        else
+        {
+            stringPoint.Append(new C.NumericValue(name));
+        }
     }
 }
